@@ -19,7 +19,7 @@ public class LoanApplicationDetails {
     private CustomerDetails customer;
 
     @ManyToOne
-    @JoinColumn(name = "product_id", nullable = false)
+    @JoinColumn(name = "product_id")
     private LoanProductDetails product;
 
     @Column(name = "loan_amount")

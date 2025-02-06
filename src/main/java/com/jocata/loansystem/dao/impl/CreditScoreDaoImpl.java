@@ -1,23 +1,23 @@
 package com.jocata.loansystem.dao.impl;
 
-import com.jocata.loansystem.dao.CustomerDao;
-import com.jocata.loansystem.entities.CustomerDetails;
+import com.jocata.loansystem.dao.CreditScoreDao;
+import com.jocata.loansystem.entities.CreditScoreDetails;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+
 @Repository
 @Transactional
-public class CustomerDaoImpl implements CustomerDao {
+public class CreditScoreDaoImpl implements CreditScoreDao {
 
     @PersistenceContext
     private EntityManager entityManager;
 
     @Override
-    public CustomerDetails createCustomer(CustomerDetails customerDetails) {
-        entityManager.persist(customerDetails);
-        return customerDetails;
+    public CreditScoreDetails createCreditScore(CreditScoreDetails creditScoreDetails) {
+        entityManager.persist(creditScoreDetails);
+        return creditScoreDetails;
     }
-
 }

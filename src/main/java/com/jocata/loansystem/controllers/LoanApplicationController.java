@@ -17,14 +17,12 @@ public class LoanApplicationController {
         this.loanApplicationService = loanApplicationService;
     }
     @PostMapping("/generate")
-    public String createLoanApplication(@RequestBody LoanApplicationRequestForm loanApplicationRequestForm){
-        if((loanApplicationRequestForm.getAadharNumber()!=null || loanApplicationRequestForm.getAadharNumber().isEmpty())
-                && (loanApplicationRequestForm.getPhoneNumber()!=null || loanApplicationRequestForm.getPhoneNumber().isEmpty())){
-            return  loanApplicationService.createLoanApplication(loanApplicationRequestForm);
-        }
-        if(loanApplicationRequestForm.getPanNumber()!=null || loanApplicationRequestForm.getPanNumber().isEmpty()
-                && (loanApplicationRequestForm.getPhoneNumber()!=null || loanApplicationRequestForm.getPhoneNumber().isEmpty())){
-            return  loanApplicationService.createLoanApplication(loanApplicationRequestForm);
+    public String createLoanApplication(@RequestBody LoanApplicationRequestForm requestForm) {
+
+        if ((requestForm.getPanNumber() != null && !requestForm.getPanNumber().isEmpty()) &&
+                (requestForm.getAadharNumber() != null && !requestForm.getAadharNumber().isEmpty())
+                && (requestForm.getPhoneNumber() != null || !requestForm.getPhoneNumber().isEmpty())) {
+            return loanApplicationService.createLoanApplication(requestForm);
         }
         return "Fill the required fields";
     }

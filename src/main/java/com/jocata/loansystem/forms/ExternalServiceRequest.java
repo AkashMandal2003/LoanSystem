@@ -7,6 +7,15 @@ public class ExternalServiceRequest implements Serializable {
     private String txnId;
     private PanPayload panPayload;
     private AadharPayLoad aadharPayLoad;
+    private CibilPayLoad cibilPayLoad;
+
+    public CibilPayLoad getCibilPayLoad() {
+        return cibilPayLoad;
+    }
+
+    public void setCibilPayLoad(CibilPayLoad cibilPayLoad) {
+        this.cibilPayLoad = cibilPayLoad;
+    }
 
     public AadharPayLoad getAadharPayLoad() {
         return aadharPayLoad;
