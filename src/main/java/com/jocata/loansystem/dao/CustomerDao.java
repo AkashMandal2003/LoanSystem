@@ -6,4 +6,6 @@ public interface CustomerDao {
 
     CustomerDetails createCustomer(CustomerDetails customerDetails);
 
+    CustomerDetails getCustomer(String panNumber);
+
 }

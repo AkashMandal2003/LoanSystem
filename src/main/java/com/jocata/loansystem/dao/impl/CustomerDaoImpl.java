@@ -20,4 +20,12 @@ public class CustomerDaoImpl implements CustomerDao {
         return customerDetails;
     }
 
+    @Override
+    public CustomerDetails getCustomer(String panNumber) {
+        String jpql= "Select c from CustomerDetails c where c.identityNumber=:identityNumber";
+        return entityManager.createQuery(jpql,CustomerDetails.class)
+                .setParameter("identityNumber",panNumber)
+                .getSingleResult();
+    }
+
 }

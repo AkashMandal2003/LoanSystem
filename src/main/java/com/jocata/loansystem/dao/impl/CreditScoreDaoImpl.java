@@ -20,4 +20,18 @@ public class CreditScoreDaoImpl implements CreditScoreDao {
         entityManager.persist(creditScoreDetails);
         return creditScoreDetails;
     }
+
+    @Override
+    public CreditScoreDetails getCustomerFromCreditScore(Integer customerId) {
+        return entityManager.createQuery(
+                        "SELECT c FROM CreditScoreDetails c WHERE c.customer.customerId = :customerId",
+                        CreditScoreDetails.class)
+                .setParameter("customerId", customerId)
+                .getSingleResult();
+    }
+
+    @Override
+    public void updateCreditScore(CreditScoreDetails creditScoreDetails) {
+        entityManager.merge(creditScoreDetails);
+    }
 }

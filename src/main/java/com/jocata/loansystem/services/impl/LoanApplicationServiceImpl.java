@@ -20,6 +20,10 @@ import java.math.BigDecimal;
 import java.sql.Date;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 @Service
 public class LoanApplicationServiceImpl implements LoanApplicationService {
@@ -44,6 +48,7 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
     @Override
     public String createLoanApplication(LoanApplicationRequestForm requestForm) {
 
+        long start = System.currentTimeMillis();
         String pan = requestForm.getPanNumber();
         String aadhar = requestForm.getAadharNumber();
         String phone = requestForm.getPhoneNumber();
@@ -52,70 +57,125 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
         boolean isPanProvided = pan != null && !pan.trim().isEmpty();
         boolean isAadharProvided = aadhar != null && !aadhar.trim().isEmpty();
 
+
         if (isPanProvided && isAadharProvided && isPhoneValid && isValidPan(pan) && isValidAadhar(aadhar)) {
 
-                PanResponse panResponse = getPanResponse(pan);
-                AadharResponse aadharResponse = getAadharResponse(aadhar);
-                CibilResponse cibilResponse = getCibilResponse(pan);
+            try (ExecutorService executorService = Executors.newFixedThreadPool(3)) {
+                Future<PanResponse> panFuture = executorService.submit(() -> getPanResponse(pan));
+                Future<AadharResponse> aadharFuture = executorService.submit(() -> getAadharResponse(aadhar));
+                Future<CibilResponse> cibilFuture = executorService.submit(() -> getCibilResponse(pan));
 
-                String fullNameFromAadhar = aadharResponse.getFullName();
-                if (fullNameFromAadhar == null || fullNameFromAadhar.isBlank()) {
-                    throw new IllegalArgumentException("Full name is missing in Aadhar response");
+                try {
+                    PanResponse panResponse = panFuture.get();
+                    AadharResponse aadharResponse = aadharFuture.get();
+                    CibilResponse cibilResponse = cibilFuture.get();
+
+                    String fullNameFromAadhar = aadharResponse.getFullName();
+                    if (fullNameFromAadhar == null || fullNameFromAadhar.isBlank()) {
+                        throw new IllegalArgumentException("Full name is missing in Aadhar response");
+                    }
+                    fullNameFromAadhar = fullNameFromAadhar.trim().replaceAll("\\s+", " ");
+                    String[] parts = fullNameFromAadhar.split(" ");
+                    String firstNameFromAadhar = parts[0];
+                    String lastNameFromAadhar = parts.length > 1 ? parts[parts.length - 1] : "";
+
+                    String fullNameFromPan = aadharResponse.getFullName();
+                    if (fullNameFromPan == null || fullNameFromPan.isBlank()) {
+                        throw new IllegalArgumentException("Full name is missing in Pan response");
+                    }
+                    fullNameFromPan = fullNameFromPan.trim().replaceAll("\\s+", " ");
+                    String[] partsPan = fullNameFromPan.split(" ");
+                    String firstNameFromPan = partsPan[0];
+                    String lastNameFromPan = partsPan.length > 1 ? partsPan[partsPan.length - 1] : "";
+
+                    double similarity = calculateNameSimilarity(fullNameFromAadhar, fullNameFromPan);
+
+                    if (similarity < 90) {
+                        throw new IllegalArgumentException("PAN and Aadhar names do not match sufficiently: " + similarity + "%");
+                    }
+
+                    CustomerDetails daoCustomer = customerDao.getCustomer(pan);
+                    CustomerDetails customerFromLoanApplicationDao = loanApplicationDao.getCustomerFromLoanApplicationDao(daoCustomer.getCustomerId());
+                    if (daoCustomer.getCustomerId().equals(customerFromLoanApplicationDao.getCustomerId())) {
+
+                        CreditScoreDetails existingScore = creditScoreDao.getCustomerFromCreditScore(daoCustomer.getCustomerId());
+                        if (existingScore != null) {
+                            existingScore.setScore(Integer.valueOf(cibilResponse.getCreditScore()));
+                            existingScore.setScoreDate(Date.valueOf(cibilResponse.getReportDate()));
+                            existingScore.setCreditHistory(cibilResponse.getCreditHistory());
+                            existingScore.setTotalOutstandingBalance(new BigDecimal(cibilResponse.getTotalOutstandingBalance()));
+                            existingScore.setRecentCreditInquiries(cibilResponse.getRecentCreditInquiries());
+                            existingScore.setPaymentHistory(cibilResponse.getPaymentHistory());
+                            existingScore.setCreditLimit(new BigDecimal(cibilResponse.getCreditLimit()));
+                            existingScore.setStatus(cibilResponse.getStatus());
+
+                            creditScoreDao.updateCreditScore(existingScore);
+                        } else {
+                            CreditScoreDetails newScore = new CreditScoreDetails();
+                            newScore.setCustomer(daoCustomer);
+                            newScore.setScore(Integer.valueOf(cibilResponse.getCreditScore()));
+                            newScore.setScoreDate(Date.valueOf(cibilResponse.getReportDate()));
+                            newScore.setCreditHistory(cibilResponse.getCreditHistory());
+                            newScore.setTotalOutstandingBalance(new BigDecimal(cibilResponse.getTotalOutstandingBalance()));
+                            newScore.setRecentCreditInquiries(cibilResponse.getRecentCreditInquiries());
+                            newScore.setPaymentHistory(cibilResponse.getPaymentHistory());
+                            newScore.setCreditLimit(new BigDecimal(cibilResponse.getCreditLimit()));
+                            newScore.setStatus(cibilResponse.getStatus());
+
+                            creditScoreDao.createCreditScore(newScore);
+
+                        }
+
+                        LoanApplicationDetails newApplication = new LoanApplicationDetails();
+                        newApplication.setApplicationDate(new Date(System.currentTimeMillis()));
+                        newApplication.setCustomerId(daoCustomer);
+                        newApplication.setStatus(String.valueOf(LoanStatus.PENDING));
+
+                        loanApplicationDao.createLoanApplication(newApplication);
+                        return "New loan application created successfully for " + daoCustomer.getIdentityNumber();
+
+                    }
+
+                    CustomerDetails customer = new CustomerDetails();
+                    customer.setFirstName(!StringUtils.isEmpty(firstNameFromPan) ? firstNameFromPan : firstNameFromAadhar);
+                    customer.setLastName(!StringUtils.isEmpty(lastNameFromPan) ? lastNameFromPan : lastNameFromAadhar);
+                    customer.setEmail(aadharResponse.getEmail());
+                    customer.setDob(Date.valueOf(aadharResponse.getDob()));
+                    customer.setPhoneNumber(aadharResponse.getContactNumber());
+                    customer.setAddress(aadharResponse.getAddress());
+                    customer.setIdentityNumber(!StringUtils.isEmpty(panResponse.getPanNum()) ? panResponse.getPanNum() : aadharResponse.getAadharNum());
+
+                    customerDao.createCustomer(customer);
+
+                    CreditScoreDetails scoreDetails = new CreditScoreDetails();
+                    scoreDetails.setCustomer(customer);
+                    scoreDetails.setScoreDate(Date.valueOf(cibilResponse.getReportDate()));
+                    scoreDetails.setScore(Integer.valueOf(cibilResponse.getCreditScore()));
+                    scoreDetails.setCreditHistory(cibilResponse.getCreditHistory());
+                    scoreDetails.setTotalOutstandingBalance(new BigDecimal(cibilResponse.getTotalOutstandingBalance()));
+                    scoreDetails.setRecentCreditInquiries(cibilResponse.getRecentCreditInquiries());
+                    scoreDetails.setPaymentHistory(cibilResponse.getPaymentHistory());
+                    scoreDetails.setCreditLimit(new BigDecimal(cibilResponse.getCreditLimit()));
+                    scoreDetails.setStatus(cibilResponse.getStatus());
+
+                    creditScoreDao.createCreditScore(scoreDetails);
+
+                    LoanApplicationDetails applicationDetails = new LoanApplicationDetails();
+                    applicationDetails.setApplicationDate(new Date(System.currentTimeMillis()));
+                    applicationDetails.setCustomerId(customer);
+                    applicationDetails.setStatus(String.valueOf(LoanStatus.PENDING));
+
+                    loanApplicationDao.createLoanApplication(applicationDetails);
+                } catch (InterruptedException | ExecutionException e) {
+                    throw new IllegalArgumentException("Error while fetching data from external services", e);
+                } finally {
+                    executorService.shutdown();
                 }
-                fullNameFromAadhar = fullNameFromAadhar.trim().replaceAll("\\s+", " ");
-                String[] parts = fullNameFromAadhar.split(" ");
-                String firstNameFromAadhar = parts[0];
-                String lastNameFromAadhar = parts.length > 1 ? parts[parts.length - 1] : "";
-
-                String fullNameFromPan = aadharResponse.getFullName();
-                if (fullNameFromPan == null || fullNameFromPan.isBlank()) {
-                    throw new IllegalArgumentException("Full name is missing in Pan response");
-                }
-                fullNameFromPan = fullNameFromPan.trim().replaceAll("\\s+", " ");
-                String[] partsPan = fullNameFromPan.split(" ");
-                String firstNameFromPan = partsPan[0];
-                String lastNameFromPan = partsPan.length > 1 ? partsPan[partsPan.length - 1] : "";
-
-                double similarity = calculateNameSimilarity(fullNameFromAadhar, fullNameFromPan);
-
-                if (similarity < 90) {
-                    throw new IllegalArgumentException("PAN and Aadhar names do not match sufficiently: " + similarity + "%");
-                }
-
-                CustomerDetails customer = new CustomerDetails();
-                customer.setFirstName(!StringUtils.isEmpty(firstNameFromPan) ? firstNameFromPan : firstNameFromAadhar);
-                customer.setLastName(!StringUtils.isEmpty(lastNameFromPan) ? lastNameFromPan : lastNameFromAadhar);
-                customer.setEmail(aadharResponse.getEmail());
-                customer.setDob(Date.valueOf(aadharResponse.getDob()));
-                customer.setPhoneNumber(aadharResponse.getContactNumber());
-                customer.setAddress(aadharResponse.getAddress());
-                customer.setIdentityNumber(!StringUtils.isEmpty(panResponse.getPanNum()) ? panResponse.getPanNum() : aadharResponse.getAadharNum());
-
-                customerDao.createCustomer(customer);
-
-                CreditScoreDetails scoreDetails = new CreditScoreDetails();
-                scoreDetails.setCustomer(customer);
-                scoreDetails.setScoreDate(Date.valueOf(cibilResponse.getReportDate()));
-                scoreDetails.setScore(Integer.valueOf(cibilResponse.getCreditScore()));
-                scoreDetails.setCreditHistory(cibilResponse.getCreditHistory());
-                scoreDetails.setTotalOutstandingBalance(new BigDecimal(cibilResponse.getTotalOutstandingBalance()));
-                scoreDetails.setRecentCreditInquiries(cibilResponse.getRecentCreditInquiries());
-                scoreDetails.setPaymentHistory(cibilResponse.getPaymentHistory());
-                scoreDetails.setCreditLimit(new BigDecimal(cibilResponse.getCreditLimit()));
-                scoreDetails.setStatus(cibilResponse.getStatus());
-
-                creditScoreDao.createCreditScore(scoreDetails);
-
-                LoanApplicationDetails applicationDetails = new LoanApplicationDetails();
-                applicationDetails.setApplicationDate(new Date(System.currentTimeMillis()));
-                applicationDetails.setCustomerId(customer);
-                applicationDetails.setStatus(String.valueOf(LoanStatus.PENDING));
-
-                loanApplicationDao.createLoanApplication(applicationDetails);
-
             }
-
-        return null;
+        }
+        long end = System.currentTimeMillis();
+        System.out.println(end - start);
+        return "Loan application submitted successfully.";
 
     }
 
@@ -231,7 +291,7 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
         int distance = levenshtein.apply(name1.toLowerCase(), name2.toLowerCase());
         int maxLength = Math.max(name1.length(), name2.length());
 
-        return (1 - ((double) distance / maxLength)) * 100; // Convert to percentage
+        return (1 - ((double) distance / maxLength)) * 100;
     }
 
 
