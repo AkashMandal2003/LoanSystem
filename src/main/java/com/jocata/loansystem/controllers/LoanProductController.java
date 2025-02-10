@@ -35,5 +35,4 @@ public class LoanProductController {
         return loanProductService.deleteProduct(productId);
     }
 
-
 }

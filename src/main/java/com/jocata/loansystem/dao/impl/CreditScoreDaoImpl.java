@@ -2,36 +2,58 @@ package com.jocata.loansystem.dao.impl;
 
 import com.jocata.loansystem.dao.CreditScoreDao;
 import com.jocata.loansystem.entities.CreditScoreDetails;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.PersistenceException;
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
+import org.hibernate.Transaction;
 import org.springframework.stereotype.Repository;
-import org.springframework.transaction.annotation.Transactional;
-
 
 @Repository
-@Transactional
 public class CreditScoreDaoImpl implements CreditScoreDao {
 
-    @PersistenceContext
-    private EntityManager entityManager;
+    private final SessionFactory sessionFactory;
+
+    public CreditScoreDaoImpl(SessionFactory sessionFactory) {
+        this.sessionFactory = sessionFactory;
+    }
 
     @Override
     public CreditScoreDetails createCreditScore(CreditScoreDetails creditScoreDetails) {
-        entityManager.persist(creditScoreDetails);
-        return creditScoreDetails;
+        try (Session session = sessionFactory.openSession()) {
+            Transaction transaction = session.beginTransaction();
+            try {
+                session.persist(creditScoreDetails);
+                transaction.commit();
+                return creditScoreDetails;
+            } catch (Exception e) {
+                transaction.rollback();
+                throw new PersistenceException("Failed to persist credit score details", e);
+            }
+        }
     }
 
     @Override
     public CreditScoreDetails getCustomerFromCreditScore(Integer customerId) {
-        return entityManager.createQuery(
-                        "SELECT c FROM CreditScoreDetails c WHERE c.customer.customerId = :customerId",
-                        CreditScoreDetails.class)
-                .setParameter("customerId", customerId)
-                .getSingleResult();
+        try (Session session = sessionFactory.openSession()) {
+            return session.createQuery(
+                            "FROM CreditScoreDetails c WHERE c.customer.customerId = :customerId",
+                            CreditScoreDetails.class)
+                    .setParameter("customerId", customerId)
+                    .uniqueResult();
+        }
     }
 
     @Override
     public void updateCreditScore(CreditScoreDetails creditScoreDetails) {
-        entityManager.merge(creditScoreDetails);
+        try (Session session = sessionFactory.openSession()) {
+            Transaction transaction = session.beginTransaction();
+            try {
+                session.merge(creditScoreDetails);
+                transaction.commit();
+            } catch (Exception e) {
+                transaction.rollback();
+                throw new PersistenceException("Failed to update credit score details", e);
+            }
+        }
     }
 }
