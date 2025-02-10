@@ -1,31 +1,31 @@
 package com.jocata.loansystem.dao.impl;
 
+import com.jocata.loansystem.config.HibernateUtils;
 import com.jocata.loansystem.dao.CustomerDao;
 import com.jocata.loansystem.entities.CustomerDetails;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
+import org.hibernate.query.Query;
 import org.springframework.stereotype.Repository;
-import org.springframework.transaction.annotation.Transactional;
 
 @Repository
-@Transactional
-public class CustomerDaoImpl implements CustomerDao {
+public class CustomerDaoImpl extends HibernateUtils implements CustomerDao {
 
-    @PersistenceContext
-    private EntityManager entityManager;
+    public CustomerDaoImpl(SessionFactory sessionFactory) {
+        super(sessionFactory);
+    }
 
     @Override
     public CustomerDetails createCustomer(CustomerDetails customerDetails) {
-        entityManager.persist(customerDetails);
-        return customerDetails;
+        return super.saveEntity(customerDetails);
     }
 
     @Override
     public CustomerDetails getCustomer(String panNumber) {
-        String jpql= "Select c from CustomerDetails c where c.identityNumber=:identityNumber";
-        return entityManager.createQuery(jpql,CustomerDetails.class)
-                .setParameter("identityNumber",panNumber)
-                .getSingleResult();
+        Session session = getSessionFactory().getCurrentSession();
+        String hql = "FROM CustomerDetails c WHERE c.identityNumber = :identityNumber";
+        Query<CustomerDetails> query = session.createQuery(hql, CustomerDetails.class);
+        query.setParameter("identityNumber", panNumber);
+        return query.uniqueResult();
     }
-
 }

@@ -8,5 +8,5 @@ public interface CreditScoreDao {
 
     CreditScoreDetails getCustomerFromCreditScore(Integer customerId);
 
-    void updateCreditScore(CreditScoreDetails existingScore);
+    CreditScoreDetails updateCreditScore(CreditScoreDetails existingScore);
 }

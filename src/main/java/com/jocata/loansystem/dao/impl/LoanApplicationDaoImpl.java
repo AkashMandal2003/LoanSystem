@@ -1,33 +1,32 @@
 package com.jocata.loansystem.dao.impl;
 
+import com.jocata.loansystem.config.HibernateUtils;
 import com.jocata.loansystem.dao.LoanApplicationDao;
 import com.jocata.loansystem.entities.CustomerDetails;
 import com.jocata.loansystem.entities.LoanApplicationDetails;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
+import org.hibernate.query.Query;
 import org.springframework.stereotype.Repository;
-import org.springframework.transaction.annotation.Transactional;
 
 @Repository
-@Transactional
-public class LoanApplicationDaoImpl implements LoanApplicationDao{
+public class LoanApplicationDaoImpl extends HibernateUtils implements LoanApplicationDao {
 
-    @PersistenceContext
-    private EntityManager entityManager;
+    public LoanApplicationDaoImpl(SessionFactory sessionFactory) {
+        super(sessionFactory);
+    }
 
     @Override
     public LoanApplicationDetails createLoanApplication(LoanApplicationDetails loanApplicationDetails) {
-        entityManager.persist(loanApplicationDetails);
-        return loanApplicationDetails;
+       return super.saveEntity(loanApplicationDetails);
     }
 
     @Override
     public CustomerDetails getCustomerFromLoanApplicationDao(Integer customerId) {
-        return entityManager.createQuery(
-                        "SELECT l.customer FROM LoanApplicationDetails l WHERE l.customer.customerId = :customerId",
-                        CustomerDetails.class)
-                .setParameter("customerId", customerId)
-                .getSingleResult();
+        Session session = getSessionFactory().getCurrentSession();
+        String hql = "SELECT l.customer FROM LoanApplicationDetails l WHERE l.customer.customerId = :customerId";
+        Query<CustomerDetails> query = session.createQuery(hql, CustomerDetails.class);
+        query.setParameter("customerId", customerId);
+        return query.uniqueResult();
     }
-
 }
