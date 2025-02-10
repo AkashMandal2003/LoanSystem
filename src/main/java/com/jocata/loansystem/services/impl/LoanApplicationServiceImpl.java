@@ -10,10 +10,11 @@ import com.jocata.loansystem.forms.*;
 import com.jocata.loansystem.services.LoanApplicationService;
 import com.jocata.loansystem.utils.LoanStatus;
 import org.apache.commons.text.similarity.LevenshteinDistance;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
@@ -27,6 +28,8 @@ import java.util.concurrent.Future;
 
 @Service
 public class LoanApplicationServiceImpl implements LoanApplicationService {
+
+    private static final Logger logger = LoggerFactory.getLogger(LoanApplicationServiceImpl.class);
 
     private final RestTemplate restTemplate;
     private final CustomerDao customerDao;
@@ -97,53 +100,17 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
                     CustomerDetails daoCustomer = customerDao.getCustomer(pan);
                     CustomerDetails customerFromLoanApplicationDao = loanApplicationDao.getCustomerFromLoanApplicationDao(daoCustomer.getCustomerId());
                     if (daoCustomer.getCustomerId().equals(customerFromLoanApplicationDao.getCustomerId())) {
-
-                        CreditScoreDetails existingScore = creditScoreDao.getCustomerFromCreditScore(daoCustomer.getCustomerId());
-                        if (existingScore != null) {
-                            existingScore.setScore(Integer.valueOf(cibilResponse.getCreditScore()));
-                            existingScore.setScoreDate(Date.valueOf(cibilResponse.getReportDate()));
-                            existingScore.setCreditHistory(cibilResponse.getCreditHistory());
-                            existingScore.setTotalOutstandingBalance(new BigDecimal(cibilResponse.getTotalOutstandingBalance()));
-                            existingScore.setRecentCreditInquiries(cibilResponse.getRecentCreditInquiries());
-                            existingScore.setPaymentHistory(cibilResponse.getPaymentHistory());
-                            existingScore.setCreditLimit(new BigDecimal(cibilResponse.getCreditLimit()));
-                            existingScore.setStatus(cibilResponse.getStatus());
-
-                            creditScoreDao.updateCreditScore(existingScore);
-                        } else {
-                            CreditScoreDetails newScore = new CreditScoreDetails();
-                            newScore.setCustomer(daoCustomer);
-                            newScore.setScore(Integer.valueOf(cibilResponse.getCreditScore()));
-                            newScore.setScoreDate(Date.valueOf(cibilResponse.getReportDate()));
-                            newScore.setCreditHistory(cibilResponse.getCreditHistory());
-                            newScore.setTotalOutstandingBalance(new BigDecimal(cibilResponse.getTotalOutstandingBalance()));
-                            newScore.setRecentCreditInquiries(cibilResponse.getRecentCreditInquiries());
-                            newScore.setPaymentHistory(cibilResponse.getPaymentHistory());
-                            newScore.setCreditLimit(new BigDecimal(cibilResponse.getCreditLimit()));
-                            newScore.setStatus(cibilResponse.getStatus());
-
-                            creditScoreDao.createCreditScore(newScore);
-
-                        }
-
-                        LoanApplicationDetails newApplication = new LoanApplicationDetails();
-                        newApplication.setApplicationDate(new Date(System.currentTimeMillis()));
-                        newApplication.setCustomerId(daoCustomer);
-                        newApplication.setStatus(String.valueOf(LoanStatus.PENDING));
-
-                        loanApplicationDao.createLoanApplication(newApplication);
-                        return "New loan application created successfully for " + daoCustomer.getIdentityNumber();
-
+                        return getResponseForLoanApplicationWithExistingUser(daoCustomer, cibilResponse);
                     }
 
                     CustomerDetails customer = new CustomerDetails();
-                    customer.setFirstName(!StringUtils.isEmpty(firstNameFromPan) ? firstNameFromPan : firstNameFromAadhar);
-                    customer.setLastName(!StringUtils.isEmpty(lastNameFromPan) ? lastNameFromPan : lastNameFromAadhar);
+                    customer.setFirstName(!firstNameFromPan.isBlank() ? firstNameFromPan : firstNameFromAadhar);
+                    customer.setLastName(!lastNameFromPan.isBlank() ? lastNameFromPan : lastNameFromAadhar);
                     customer.setEmail(aadharResponse.getEmail());
                     customer.setDob(Date.valueOf(aadharResponse.getDob()));
                     customer.setPhoneNumber(aadharResponse.getContactNumber());
                     customer.setAddress(aadharResponse.getAddress());
-                    customer.setIdentityNumber(!StringUtils.isEmpty(panResponse.getPanNum()) ? panResponse.getPanNum() : aadharResponse.getAadharNum());
+                    customer.setIdentityNumber(!panResponse.getPanNum().isBlank() ? panResponse.getPanNum() : aadharResponse.getAadharNum());
 
                     customerDao.createCustomer(customer);
 
@@ -167,6 +134,7 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
 
                     loanApplicationDao.createLoanApplication(applicationDetails);
                 } catch (InterruptedException | ExecutionException e) {
+                    Thread.currentThread().interrupt();
                     throw new IllegalArgumentException("Error while fetching data from external services", e);
                 } finally {
                     executorService.shutdown();
@@ -174,9 +142,46 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
             }
         }
         long end = System.currentTimeMillis();
-        System.out.println(end - start);
+        logger.info("Execution time: {} ms", (end - start));
         return "Loan application submitted successfully.";
+    }
 
+    private String getResponseForLoanApplicationWithExistingUser(CustomerDetails daoCustomer, CibilResponse cibilResponse) {
+        CreditScoreDetails existingScore = creditScoreDao.getCustomerFromCreditScore(daoCustomer.getCustomerId());
+        if (existingScore != null) {
+            existingScore.setScore(Integer.valueOf(cibilResponse.getCreditScore()));
+            existingScore.setScoreDate(Date.valueOf(cibilResponse.getReportDate()));
+            existingScore.setCreditHistory(cibilResponse.getCreditHistory());
+            existingScore.setTotalOutstandingBalance(new BigDecimal(cibilResponse.getTotalOutstandingBalance()));
+            existingScore.setRecentCreditInquiries(cibilResponse.getRecentCreditInquiries());
+            existingScore.setPaymentHistory(cibilResponse.getPaymentHistory());
+            existingScore.setCreditLimit(new BigDecimal(cibilResponse.getCreditLimit()));
+            existingScore.setStatus(cibilResponse.getStatus());
+
+            creditScoreDao.updateCreditScore(existingScore);
+        } else {
+            CreditScoreDetails newScore = new CreditScoreDetails();
+            newScore.setCustomer(daoCustomer);
+            newScore.setScore(Integer.valueOf(cibilResponse.getCreditScore()));
+            newScore.setScoreDate(Date.valueOf(cibilResponse.getReportDate()));
+            newScore.setCreditHistory(cibilResponse.getCreditHistory());
+            newScore.setTotalOutstandingBalance(new BigDecimal(cibilResponse.getTotalOutstandingBalance()));
+            newScore.setRecentCreditInquiries(cibilResponse.getRecentCreditInquiries());
+            newScore.setPaymentHistory(cibilResponse.getPaymentHistory());
+            newScore.setCreditLimit(new BigDecimal(cibilResponse.getCreditLimit()));
+            newScore.setStatus(cibilResponse.getStatus());
+
+            creditScoreDao.createCreditScore(newScore);
+
+        }
+
+        LoanApplicationDetails newApplication = new LoanApplicationDetails();
+        newApplication.setApplicationDate(new Date(System.currentTimeMillis()));
+        newApplication.setCustomerId(daoCustomer);
+        newApplication.setStatus(String.valueOf(LoanStatus.PENDING));
+
+        loanApplicationDao.createLoanApplication(newApplication);
+        return "New loan application created successfully for " + daoCustomer.getIdentityNumber();
     }
 
     private CibilResponse getCibilResponse(String panNumber) {
@@ -192,13 +197,8 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<ExternalServiceRequest> requestHttpEntity = new HttpEntity<>(externalServiceRequest, headers);
 
-        ResponseEntity<ExternalServiceResponse<List<CibilResponse>>> responseEntity = restTemplate.exchange(
-                CIBIL_SERVICE_URL,
-                HttpMethod.POST,
-                requestHttpEntity,
-                new ParameterizedTypeReference<>() {
-                }
-        );
+        ResponseEntity<ExternalServiceResponse<List<CibilResponse>>> responseEntity = restTemplate.exchange(CIBIL_SERVICE_URL, HttpMethod.POST, requestHttpEntity, new ParameterizedTypeReference<>() {
+        });
 
         return getCibilResponse(panNumber, responseEntity);
     }
@@ -240,13 +240,8 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
 
         HttpEntity<ExternalServiceRequest> requestEntity = new HttpEntity<>(aadharRequest, headers);
 
-        ResponseEntity<ExternalServiceResponse<AadharResponse>> responseEntity = restTemplate.exchange(
-                AADHAR_SERVICE_URL,
-                HttpMethod.POST,
-                requestEntity,
-                new ParameterizedTypeReference<>() {
-                }
-        );
+        ResponseEntity<ExternalServiceResponse<AadharResponse>> responseEntity = restTemplate.exchange(AADHAR_SERVICE_URL, HttpMethod.POST, requestEntity, new ParameterizedTypeReference<>() {
+        });
 
         ExternalServiceResponse<AadharResponse> response = responseEntity.getBody();
         if (response == null || response.getData() == null) {
@@ -270,13 +265,8 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
 
         HttpEntity<ExternalServiceRequest> requestEntity = new HttpEntity<>(externalServiceRequest, headers);
 
-        ResponseEntity<ExternalServiceResponse<PanResponse>> responseEntity = restTemplate.exchange(
-                PAN_SERVICE_URL,
-                HttpMethod.POST,
-                requestEntity,
-                new ParameterizedTypeReference<>() {
-                }
-        );
+        ResponseEntity<ExternalServiceResponse<PanResponse>> responseEntity = restTemplate.exchange(PAN_SERVICE_URL, HttpMethod.POST, requestEntity, new ParameterizedTypeReference<>() {
+        });
 
         ExternalServiceResponse<PanResponse> response = responseEntity.getBody();
         if (response == null || response.getData() == null) {
@@ -287,20 +277,19 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
     }
 
     private double calculateNameSimilarity(String name1, String name2) {
-        LevenshteinDistance levenshtein = new LevenshteinDistance();
+        LevenshteinDistance levenshtein = LevenshteinDistance.getDefaultInstance();
         int distance = levenshtein.apply(name1.toLowerCase(), name2.toLowerCase());
         int maxLength = Math.max(name1.length(), name2.length());
 
         return (1 - ((double) distance / maxLength)) * 100;
     }
 
-
     private boolean isValidAadhar(String aadhar) {
         return aadhar.matches("\\d{12}");
     }
 
     private boolean isValidPan(String pan) {
-        return pan.matches("[A-Z]{5}[0-9]{4}[A-Z]{1}");
+        return pan.matches("[A-Z]{5}\\d{4}[A-Z]");
     }
 
 }
