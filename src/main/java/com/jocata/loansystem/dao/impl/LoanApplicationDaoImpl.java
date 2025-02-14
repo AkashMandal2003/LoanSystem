@@ -9,6 +9,8 @@ import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
+
 @Repository
 public class LoanApplicationDaoImpl implements LoanApplicationDao {
 
@@ -42,4 +44,31 @@ public class LoanApplicationDaoImpl implements LoanApplicationDao {
                     .uniqueResult();
         }
     }
+
+    @Override
+    public LoanApplicationDetails updateLoanApplication(LoanApplicationDetails loanApplicationDetails) {
+        try (Session session = sessionFactory.openSession()) {
+            Transaction transaction = session.beginTransaction();
+            try {
+                session.merge(loanApplicationDetails);
+                transaction.commit();
+                return loanApplicationDetails;
+            } catch (Exception e) {
+                transaction.rollback();
+                throw new PersistenceException("Failed to update loan application details", e);
+            }
+        }
+    }
+
+    @Override
+    public LoanApplicationDetails getLatestLoanApplicationByCustomerId(Integer customerId) {
+        try (Session session = sessionFactory.openSession()) {
+            String hql = "FROM LoanApplicationDetails l WHERE l.customer.customerId = :customerId ORDER BY l.applicationDate DESC";
+            return session.createQuery(hql, LoanApplicationDetails.class)
+                    .setParameter("customerId", customerId)
+                    .setMaxResults(1)
+                    .uniqueResult();
+        }
+    }
+
 }

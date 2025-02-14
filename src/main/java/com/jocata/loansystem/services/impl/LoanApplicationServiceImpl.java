@@ -97,10 +97,13 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
                         throw new IllegalArgumentException("PAN and Aadhar names do not match sufficiently: " + similarity + "%");
                     }
 
+
                     CustomerDetails daoCustomer = customerDao.getCustomer(pan);
+                    if(daoCustomer!=null){
                     CustomerDetails customerFromLoanApplicationDao = loanApplicationDao.getCustomerFromLoanApplicationDao(daoCustomer.getCustomerId());
                     if (daoCustomer.getCustomerId().equals(customerFromLoanApplicationDao.getCustomerId())) {
                         return getResponseForLoanApplicationWithExistingUser(daoCustomer, cibilResponse);
+                    }
                     }
 
                     CustomerDetails customer = new CustomerDetails();

@@ -48,7 +48,7 @@ public class RiskAssessmentDetails {
         return loanApplication;
     }
 
-    public void setApplicationId(LoanApplicationDetails loanApplication) {
+    public void setApplication(LoanApplicationDetails loanApplication) {
         this.loanApplication = loanApplication;
     }
 

@@ -9,6 +9,8 @@ import org.hibernate.Transaction;
 import org.hibernate.query.Query;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
+
 @Repository
 public class LoanProductDaoImpl implements LoanProductDao {
 
@@ -35,12 +37,37 @@ public class LoanProductDaoImpl implements LoanProductDao {
 
     @Override
     public LoanProductDetails getProduct(Integer productId) {
-        Session session=sessionFactory.getCurrentSession();
-        String sql="FROM LoanProductDetails l WHERE l.productId= :id";
-        Query<LoanProductDetails> query=session.createQuery(sql,LoanProductDetails.class);
-        query.setParameter("id",productId);
-        return query.uniqueResult();
+        Query<LoanProductDetails> query;
+        try (Session session = sessionFactory.openSession()) {
+            String sql = "FROM LoanProductDetails l WHERE l.productId= :id";
+            query = session.createQuery(sql, LoanProductDetails.class);
+            query.setParameter("id",productId);
+            return query.uniqueResult();
+        }
     }
+
+    @Override
+    public LoanProductDetails getProductByTenure(Integer tenure) {
+        Query<LoanProductDetails> query;
+        try (Session session = sessionFactory.openSession()) {
+            String sql = "FROM LoanProductDetails l WHERE l.termMonths= :tenure";
+            query = session.createQuery(sql, LoanProductDetails.class);
+            query.setParameter("tenure",tenure);
+            return query.uniqueResult();
+        }
+    }
+
+    @Override
+    public List<LoanProductDetails> getAllLoanProduct() {
+        try (Session session = sessionFactory.openSession()) {
+            String sql = "FROM LoanProductDetails";
+            Query<LoanProductDetails> query = session.createQuery(sql, LoanProductDetails.class);
+            return query.getResultList();
+        } catch (Exception e) {
+            throw new PersistenceException("Failed to retrieve loan products", e);
+        }
+    }
+
 
     @Override
     public LoanProductDetails updateProduct(LoanProductDetails loanProductDetails) {
