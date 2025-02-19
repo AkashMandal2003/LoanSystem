@@ -2,10 +2,13 @@ package com.jocata.loansystem.services.impl;
 
 import com.jocata.loansystem.dao.*;
 import com.jocata.loansystem.entities.*;
-import com.jocata.loansystem.forms.CreditAssessmentForm;
+import com.jocata.loansystem.forms.*;
 import com.jocata.loansystem.services.CreditAssessmentService;
 import com.jocata.loansystem.utils.LoanStatus;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
 import java.sql.Date;
@@ -19,14 +22,18 @@ public class CreditAssessmentServiceImpl implements CreditAssessmentService {
     private final LoanProductDao loanProductDao;
     private final LoanApplicationDao loanApplicationDao;
     private final RiskAssessmentDao riskAssessmentDao;
+    private final RestTemplate restTemplate;
 
-    public CreditAssessmentServiceImpl(CreditScoreDao creditScoreDao, CustomerDao customerDao, LoanProductDao loanProductDao, LoanApplicationDao loanApplicationDao, RiskAssessmentDao riskAssessmentDao) {
+    public CreditAssessmentServiceImpl(CreditScoreDao creditScoreDao, CustomerDao customerDao, LoanProductDao loanProductDao, LoanApplicationDao loanApplicationDao, RiskAssessmentDao riskAssessmentDao, RestTemplate restTemplate) {
         this.creditScoreDao = creditScoreDao;
         this.customerDao = customerDao;
         this.loanProductDao = loanProductDao;
         this.loanApplicationDao = loanApplicationDao;
         this.riskAssessmentDao = riskAssessmentDao;
+        this.restTemplate = restTemplate;
     }
+
+    private static final String CIBIL_SERVICE_URL = "http://localhost:9090/externalservices/api/v1/addCibilDetails";
 
     @Override
     public String getCreditAssessmentDetails(CreditAssessmentForm creditAssessmentForm) {
@@ -55,12 +62,12 @@ public class CreditAssessmentServiceImpl implements CreditAssessmentService {
             double powFactor = Math.pow(1 + monthlyInterestRate, termMonths);
             double principalAmount = ((availableEmi * (powFactor - 1)) / (monthlyInterestRate * powFactor));
 
-            return checkLoanSlabEligibility(principalAmount, creditAssessmentForm);
+            return checkLoanSlabEligibility( availableEmi, principalAmount, creditAssessmentForm);
         }
         return "Not Eligible for loan, check credit scores";
     }
 
-    private String checkLoanSlabEligibility(double principalAmount, CreditAssessmentForm creditAssessmentForm) {
+    private String checkLoanSlabEligibility(double availableEmi, double principalAmount, CreditAssessmentForm creditAssessmentForm) {
 
         CustomerDetails daoCustomer = customerDao.getCustomer(creditAssessmentForm.getPanNumber());
         CreditScoreDetails customerCreditScore = creditScoreDao.getCustomerFromCreditScore(daoCustomer.getCustomerId());
@@ -94,7 +101,21 @@ public class CreditAssessmentServiceImpl implements CreditAssessmentService {
                     riskAssessmentDetails.setIncome(new BigDecimal(creditAssessmentForm.getMonthlyIncome()));
                     riskAssessmentDetails.setApplication(updatedLoanApplication);
 
-                    riskAssessmentDao.saveRiskAssessmentDetails(riskAssessmentDetails);
+                    RiskAssessmentDetails saveRiskAssessmentDetails = riskAssessmentDao.saveRiskAssessmentDetails(riskAssessmentDetails);
+
+                    CibilRequestForm cibilRequestForm=new CibilRequestForm();
+                    cibilRequestForm.setPan(daoCustomer.getIdentityNumber());
+                    cibilRequestForm.setCreditLimit(String.valueOf(customerCreditScore.getCreditLimit()));
+                    cibilRequestForm.setCreditHistory(customerCreditScore.getCreditHistory());
+                    cibilRequestForm.setPaymentHistory(customerCreditScore.getPaymentHistory());
+                    cibilRequestForm.setRecentCreditInquiries(customerCreditScore.getRecentCreditInquiries());
+                    cibilRequestForm.setCreditScore(String.valueOf(saveRiskAssessmentDetails.getCreditScore()));
+                    cibilRequestForm.setReportDate(String.valueOf(new Date(System.currentTimeMillis())));
+                    cibilRequestForm.setStatus(customerCreditScore.getStatus());
+                    double currOutStandingBalance=availableEmi+customerCreditScore.getTotalOutstandingBalance().doubleValue();
+                    cibilRequestForm.setTotalOutstandingBalance(String.valueOf(currOutStandingBalance));
+
+                    addCibilDetails(cibilRequestForm);
 
                     return "You are eligible for the " + loanProduct.getProductName() + " loan slab. And Loan Application Updated Successfully";
                 }
@@ -144,4 +165,20 @@ public class CreditAssessmentServiceImpl implements CreditAssessmentService {
     private boolean isInvalidInput(CreditAssessmentForm form) {
         return form == null || form.getPanNumber() == null || form.getMonthlyIncome() == null || form.getTenureInMonths() == null;
     }
+
+    private CibilResponse addCibilDetails(CibilRequestForm cibilRequestForm) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<CibilRequestForm> requestHttpEntity = new HttpEntity<>(cibilRequestForm, headers);
+
+        ResponseEntity<ExternalServiceResponse<CibilResponse>> responseEntity = restTemplate.exchange(CIBIL_SERVICE_URL, HttpMethod.POST, requestHttpEntity, new ParameterizedTypeReference<>() {
+        });
+
+        ExternalServiceResponse<CibilResponse> body = responseEntity.getBody();
+        if (body == null || body.getData() == null) {
+            throw new IllegalArgumentException("Pan data not found for Cibil Details: " + cibilRequestForm.getPan());
+        }
+        return body.getData();
+    }
+
 }
