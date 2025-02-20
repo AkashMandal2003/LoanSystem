@@ -50,6 +50,8 @@ public class HibernateUtils {
         }
     }
 
+    //#####      Save Entities     ########//
+
     public <T> T saveEntity(T entity) {
         logger.info("saveEntity() : Entity Class ->> : {}", entity.getClass());
         Session session = null;
@@ -61,24 +63,6 @@ public class HibernateUtils {
             return entity;
         } catch (Exception e) {
             logger.error("Error in saveEntity method -->> : {}",e.getMessage());
-        } finally {
-            this.closeSession(session);
-        }
-        return null;
-    }
-
-    public <T> T updateEntity(T entity) {
-        logger.info("updateEntity() : Entity Class ->> : {}", entity.getClass());
-        Session session = null;
-        try {
-            session = this.getSession();
-            Transaction tx = session.beginTransaction();
-            session.merge(entity);
-            tx.commit();
-            return entity;
-
-        } catch (Exception e) {
-            logger.error("(:) Error in UpdateEntity Method (:) : {}", e.getMessage());
         } finally {
             this.closeSession(session);
         }
@@ -102,6 +86,49 @@ public class HibernateUtils {
         }
         return null;
     }
+
+
+    //#####      Update Entities     ########//
+
+    public <T> T updateEntity(T entity) {
+        logger.info("updateEntity() : Entity Class ->> : {}", entity.getClass());
+        Session session = null;
+        try {
+            session = this.getSession();
+            Transaction tx = session.beginTransaction();
+            session.merge(entity);
+            tx.commit();
+            return entity;
+
+        } catch (Exception e) {
+            logger.error("(:) Error in UpdateEntity Method (:) : {}", e.getMessage());
+        } finally {
+            this.closeSession(session);
+        }
+        return null;
+    }
+
+    public String updateEntityByHQL(String hqlQuery) {
+
+        Session session = null;
+        try {
+            session = this.getSession();
+            MutationQuery query = session.createMutationQuery(hqlQuery);
+            int result = query.executeUpdate();
+            if (result > 0) {
+                return HttpStatus.Series.SUCCESSFUL.name();
+            }
+        } catch (Exception e) {
+            logger.error("Error in updateEntityByHQL method : {}",e.getMessage());
+        } finally {
+            this.closeSession(session);
+        }
+        return null;
+    }
+
+
+
+    //#####      Delete Entities     ########//
 
     public <T> T deleteEntity(T entity, Serializable primaryId) {
         logger.info("deleteEntity() : Entity Class ->> : {}", entity.getClass());
@@ -138,6 +165,9 @@ public class HibernateUtils {
         return null;
     }
 
+
+    //#####      Get Entities     ########//
+
     public <T> T findEntityById(Class<T> entityClass, Serializable primaryId) {
 
         logger.info("getEntityById() : Entity Class ->> : {} Primary ID ->> : {}", entityClass, primaryId);
@@ -151,6 +181,59 @@ public class HibernateUtils {
             this.closeSession(session);
         }
         return null;
+    }
+
+    public <T> T findEntityByCriteria(Class<T> entityClass, String primaryPropertyName, Serializable primaryId) {
+
+        logger.info("getEntityByCriteria() one criteria : Entity Class ->> : {} PrimaryPropertyName ->> : {} Primary ID ->> : {}", entityClass, primaryPropertyName, primaryId);
+        Session session = null;
+        try {
+            session = this.getSession();
+            HibernateCriteriaBuilder criteriaBuilder = session.getCriteriaBuilder();
+            JpaCriteriaQuery<T> criteriaQuery = criteriaBuilder.createQuery(entityClass);
+            JpaRoot<T> root = criteriaQuery.from(entityClass);
+
+            String[] props = this.checkIfSplit(primaryPropertyName);
+            if(props.length == 2) {
+                criteriaQuery.select(root).where(criteriaBuilder.equal(root.get(props[0]).get(props[1]), primaryId));
+            }else {
+                criteriaQuery.select(root).where(criteriaBuilder.equal(root.get(primaryPropertyName), primaryId));
+            }
+
+            return session.createQuery(criteriaQuery).getSingleResult();
+        } catch (Exception e) {
+            logger.error("(:) Error in FindEntityByCriteria Method (:) : {}", e.getMessage());
+        } finally {
+            this.closeSession(session);
+        }
+        return null;
+    }
+
+
+    public <T> List<T> findEntitiesByCriteria(Class<T> entityClass, String primaryPropertyName, Serializable primaryId) {
+
+        logger.info("getEntitiesByCriteria() one criteria : Entity Class ->> : {} PrimaryPropertyName ->> : {} Primary ID ->> : {}", entityClass, primaryPropertyName, primaryId);
+        Session session = null;
+        try {
+            session = this.getSession();
+            HibernateCriteriaBuilder criteriaBuilder = session.getCriteriaBuilder();
+            JpaCriteriaQuery<T> criteriaQuery = criteriaBuilder.createQuery(entityClass);
+            JpaRoot<T> root = criteriaQuery.from(entityClass);
+
+            String[] props = this.checkIfSplit(primaryPropertyName);
+            if(props.length == 2) {
+                criteriaQuery.select(root).where(criteriaBuilder.equal(root.get(props[0]).get(props[1]), primaryId));
+            }else {
+                criteriaQuery.select(root).where(criteriaBuilder.equal(root.get(primaryPropertyName), primaryId));
+            }
+
+            return session.createQuery(criteriaQuery).getResultList();
+        } catch (Exception e) {
+            logger.error("(:) Error in FindEntitiesByCriteria Method (:) : {}", e.getMessage());
+        } finally {
+            this.closeSession(session);
+        }
+        return Collections.emptyList();
     }
 
     public <T> List<T> loadEntitiesByCriteria(Class<T> entityClass) {
@@ -191,50 +274,6 @@ public class HibernateUtils {
             this.closeSession(session);
         }
         return Collections.emptyList();
-    }
-
-    public <T> T findEntityByCriteria(Class<T> entityClass, String primaryPropertyName, Serializable primaryId) {
-
-        logger.info("getEntityByCriteria() one criteria : Entity Class ->> : {} PrimaryPropertyName ->> : {} Primary ID ->> : {}", entityClass, primaryPropertyName, primaryId);
-        Session session = null;
-        try {
-            session = this.getSession();
-            HibernateCriteriaBuilder criteriaBuilder = session.getCriteriaBuilder();
-            JpaCriteriaQuery<T> criteriaQuery = criteriaBuilder.createQuery(entityClass);
-            JpaRoot<T> root = criteriaQuery.from(entityClass);
-
-            String[] props = this.checkIfSplit(primaryPropertyName);
-            if(props.length == 2) {
-                criteriaQuery.select(root).where(criteriaBuilder.equal(root.get(props[0]).get(props[1]), primaryId));
-            }else {
-                criteriaQuery.select(root).where(criteriaBuilder.equal(root.get(primaryPropertyName), primaryId));
-            }
-
-            return session.createQuery(criteriaQuery).getSingleResult();
-        } catch (Exception e) {
-            logger.error("(:) Error in FindEntityByCriteria Method (:) : {}", e.getMessage());
-        } finally {
-            this.closeSession(session);
-        }
-        return null;
-    }
-
-    public String updateEntityByHQL(String hqlQuery) {
-
-        Session session = null;
-        try {
-            session = this.getSession();
-            MutationQuery query = session.createMutationQuery(hqlQuery);
-            int result = query.executeUpdate();
-            if (result > 0) {
-                return HttpStatus.Series.SUCCESSFUL.name();
-            }
-        } catch (Exception e) {
-            logger.error("Error in updateEntityByHQL method : {}",e.getMessage());
-        } finally {
-            this.closeSession(session);
-        }
-        return null;
     }
 
     private String[] checkIfSplit(String primaryPropertyName) {
