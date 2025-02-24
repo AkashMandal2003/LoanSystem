@@ -7,6 +7,9 @@ public interface LoanApplicationDao {
 
     LoanApplicationDetails createLoanApplication(LoanApplicationDetails loanApplicationDetails);
     CustomerDetails getCustomerFromLoanApplicationDao(Integer customerId);
+
+    LoanApplicationDetails getLoanApplicationDetails(Integer loanApplicationId);
+
     LoanApplicationDetails updateLoanApplication(LoanApplicationDetails loanApplicationDetails);
     LoanApplicationDetails getLatestLoanApplicationByCustomerId(Integer customerId);
 }

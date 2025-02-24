@@ -9,8 +9,6 @@ import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 import org.springframework.stereotype.Repository;
 
-import java.util.List;
-
 @Repository
 public class LoanApplicationDaoImpl implements LoanApplicationDao {
 
@@ -41,6 +39,16 @@ public class LoanApplicationDaoImpl implements LoanApplicationDao {
             String hql = "SELECT l.customer FROM LoanApplicationDetails l WHERE l.customer.customerId = :customerId";
             return session.createQuery(hql, CustomerDetails.class)
                     .setParameter("customerId", customerId)
+                    .uniqueResult();
+        }
+    }
+
+    @Override
+    public LoanApplicationDetails getLoanApplicationDetails(Integer loanApplicationId) {
+        try (Session session = sessionFactory.openSession()) {
+            String hql = "SELECT l FROM LoanApplicationDetails l WHERE l.applicationId = :loanApplicationId";
+            return session.createQuery(hql, LoanApplicationDetails.class)
+                    .setParameter("loanApplicationId", loanApplicationId)
                     .uniqueResult();
         }
     }

@@ -2,6 +2,7 @@ package com.jocata.loansystem.dao.impl;
 
 import com.jocata.loansystem.dao.RiskAssessmentDao;
 import com.jocata.loansystem.entities.RiskAssessmentDetails;
+import jakarta.persistence.NoResultException;
 import jakarta.persistence.PersistenceException;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
@@ -29,6 +30,18 @@ public class RiskAssessmentDaoImpl implements RiskAssessmentDao {
                 throw new PersistenceException("Failed to persist riskAssessmentDetails details", e);
             }
             return riskAssessmentDetails;
+        }
+    }
+
+    @Override
+    public RiskAssessmentDetails getRiskAssessmentByApplicationId(Integer applicationId) {
+        try (Session session = sessionFactory.openSession()) {
+            String hql = "FROM RiskAssessmentDetails r WHERE r.loanApplication.applicationId = :applicationId";
+            return session.createQuery(hql, RiskAssessmentDetails.class)
+                    .setParameter("applicationId", applicationId)
+                    .uniqueResult();
+        } catch (NoResultException e) {
+            return null;
         }
     }
 }
